@@ -1,23 +1,108 @@
-# QueueStorm Warmup API
+# QueueStorm Backend
 
-Express.js + TypeScript + Prisma API for the QueueStorm Warmup mock preliminary task. It classifies support tickets using deterministic rules and attempts to save each classification to Prisma without blocking the API response if logging fails.
+QueueStorm Backend is an Express.js, TypeScript, Prisma, and PostgreSQL API for classifying customer support tickets. It validates incoming ticket payloads, sends classification prompts to an AI provider through OpenRouter, normalizes the response into a strict API contract, and logs classification attempts with Prisma.
+
+The service is designed for the QueueStorm Warmup mock preliminary task and follows a modular, feature-oriented structure.
 
 ## Tech Stack
 
 - Node.js
-- Express.js
+- Express.js 5
 - TypeScript
+- Zod
 - Prisma 7
 - PostgreSQL
-- Zod
-- tsx for development
-- tsup for production build
+- OpenRouter API
+- tsx for local development
+- tsup for production builds
 
-## Endpoints
+## Project Structure
+
+```text
+src/
+  api.ts
+  app.ts
+  server.ts
+  config/
+    env.ts
+  lib/
+    openrouter.ts
+    prisma.ts
+  middleware/
+    error.middleware.ts
+    notFound.middleware.ts
+  modules/
+    ticket/
+      api.route.ts
+      api.controller.ts
+      api.service.ts
+      api.validation.ts
+      api.type.ts
+      api.constant.ts
+prisma/
+  schema/
+    schema.prisma
+    auth.prisma
+    ticket-log.prisma
+```
+
+## Architecture
+
+```mermaid
+flowchart TD
+  Client["API Client"] --> App["Express App"]
+  App --> Middleware["Global Middleware<br/>CORS, JSON Parser"]
+  Middleware --> Routes["Ticket Routes"]
+  Routes --> Controller["Ticket Controller"]
+  Controller --> Validation["Zod Validation"]
+  Validation --> Service["Ticket Service"]
+  Service --> OpenRouter["OpenRouter AI API"]
+  Service --> Prisma["Prisma Client"]
+  Prisma --> Postgres["PostgreSQL"]
+  App --> ErrorMiddleware["Error Middleware"]
+  App --> NotFound["Not Found Middleware"]
+```
+
+## Request Flow
+
+```mermaid
+sequenceDiagram
+  participant Client
+  participant Express as Express App
+  participant Route as Ticket Route
+  participant Controller
+  participant Zod as Zod Validator
+  participant Service as Ticket Service
+  participant AI as OpenRouter
+  participant Prisma
+  participant DB as PostgreSQL
+
+  Client->>Express: POST /sort-ticket
+  Express->>Route: Match route
+  Route->>Controller: Forward request
+  Controller->>Zod: Validate body
+  Zod-->>Controller: Typed payload
+  Controller->>Service: sortTicket(payload)
+  Service->>AI: Send classification prompt
+  AI-->>Service: Raw JSON-like response
+  Service->>Service: Parse, normalize, enforce safety rules
+  Service->>Prisma: Create TicketLog
+  Prisma->>DB: Insert classification log
+  DB-->>Prisma: Insert result
+  Prisma-->>Service: Log complete
+  Service-->>Controller: Classification response
+  Controller-->>Client: 200 JSON response
+```
+
+If Prisma logging fails, the service catches the error and still returns the classification response.
+
+## API Endpoints
 
 ### GET /health
 
 Returns service status and uptime.
+
+Example response:
 
 ```json
 {
@@ -28,6 +113,8 @@ Returns service status and uptime.
 ```
 
 ### POST /sort-ticket
+
+Classifies a customer support ticket.
 
 Request body:
 
@@ -41,14 +128,16 @@ Request body:
 ```
 
 Required fields:
+
 - `ticket_id`
 - `message`
 
 Optional fields:
+
 - `channel`: `app`, `sms`, `call_center`, `merchant_portal`
 - `locale`: `bn`, `en`, `mixed`
 
-Sample response:
+Response body:
 
 ```json
 {
@@ -62,32 +151,61 @@ Sample response:
 }
 ```
 
-## Local Setup
+## Classification Contract
 
-```powershell
-npm install
-copy .env.example .env
-npm run generate
-npm run dev
-```
+Allowed `case_type` values:
 
-For a production-style local run:
+- `wrong_transfer`
+- `payment_failed`
+- `refund_request`
+- `phishing_or_social_engineering`
+- `other`
 
-```powershell
-npm run build
-npm start
-```
+Allowed `severity` values:
+
+- `low`
+- `medium`
+- `high`
+- `critical`
+
+Allowed `department` values:
+
+- `customer_support`
+- `dispute_resolution`
+- `payments_ops`
+- `fraud_risk`
+
+Safety constraints:
+
+- `agent_summary` must stay neutral and factual.
+- The API must never ask customers to share PIN, OTP, password, CVV, or full card number.
+- `human_review_required` is true when the ticket is phishing/social engineering or severity is critical.
 
 ## Environment Variables
+
+Create `.env` from `.env.example`.
 
 ```env
 PORT=3000
 NODE_ENV=development
 CORS_ORIGIN=*
 DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+OPENROUTER_API_KEY=your_openrouter_api_key
 ```
 
-## Database
+## Local Setup
+
+Install dependencies:
+
+```powershell
+npm install
+```
+
+Create environment file:
+
+```powershell
+copy .env.example .env
+```
 
 Generate Prisma Client:
 
@@ -95,25 +213,33 @@ Generate Prisma Client:
 npm run generate
 ```
 
-Create and apply a migration after configuring `DATABASE_URL`:
+Run database migrations:
 
 ```powershell
 npm run migrate
 ```
 
-The API catches Prisma logging errors and still returns classification responses.
+Start development server:
 
-## Deployment
+```powershell
+npm run dev
+```
 
-1. Set `DATABASE_URL`, `NODE_ENV`, `PORT`, and `CORS_ORIGIN` in the host environment.
-2. Run `npm install`.
-3. Run `npm run build`.
-4. Run migrations with `npm run migrate` or your deployment provider's migration step.
-5. Start with `npm start`.
+## Scripts
 
-## Sample Curl
+```text
+npm run dev          Start local development server with tsx watch
+npm run generate     Generate Prisma Client
+npm run migrate      Run Prisma migrations
+npm run typecheck    Generate Prisma Client and run TypeScript checks
+npm run build        Build production output into dist/
+npm start            Start compiled production server
+npm run check        Run typecheck and build
+```
 
-Health:
+## Sample Curl Commands
+
+Health check:
 
 ```bash
 curl http://localhost:3000/health
@@ -127,8 +253,44 @@ curl -X POST http://localhost:3000/sort-ticket \
   -d "{\"ticket_id\":\"T-001\",\"channel\":\"app\",\"locale\":\"en\",\"message\":\"I sent 5000 taka to a wrong number this morning, please help me get it back\"}"
 ```
 
+Validation error example:
+
+```bash
+curl -X POST http://localhost:3000/sort-ticket \
+  -H "Content-Type: application/json" \
+  -d "{\"ticket_id\":\"\",\"message\":\"\"}"
+```
+
+## Deployment
+
+1. Set environment variables in the deployment platform.
+2. Install dependencies with `npm install`.
+3. Generate Prisma Client with `npm run generate`.
+4. Apply database migrations with `npm run migrate` or a managed migration step.
+5. Build the application with `npm run build`.
+6. Start the application with `npm start`.
+
+For Vercel serverless builds, the project includes:
+
+```powershell
+npm run vercel-build
+```
+
+The Vercel entry point is `src/api.ts`, which exports the Express app without calling `app.listen()`.
+
+## Error Handling
+
+The API uses centralized middleware for:
+
+- Zod validation errors
+- Unexpected internal errors
+- Unknown routes
+
+Ticket classification logging is non-blocking. If PostgreSQL or Prisma logging is unavailable, the API logs the failure and continues returning the classification result.
+
 ## Known Issues
 
-- Prisma logging requires a reachable PostgreSQL database and an applied migration.
-- Classification is deterministic keyword matching, not an ML model.
-- Local relative imports use `.js` extensions because the project is ESM TypeScript.
+- Classification depends on OpenRouter availability and a valid `OPENROUTER_API_KEY`.
+- Prisma logging requires a reachable PostgreSQL database and applied migrations.
+- AI output is parsed and normalized, but upstream model behavior can still vary.
+- Relative local imports use `.js` extensions because the project is ESM TypeScript.
