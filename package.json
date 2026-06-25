@@ -1,0 +1,46 @@
+{
+  "name": "queuestorm_backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/server.js",
+  "type": "module",
+  "scripts": {
+    "predev": "prisma generate",
+    "dev": "tsx src/server.ts",
+    "preauth": "prisma generate",
+    "auth": "tsx src/lib/auth.ts",
+    "ts": "tsx",
+    "check": "npm run typecheck && npm run build",
+    "prebuild": "prisma generate",
+    "build": "tsup src/server.ts --format esm --clean",
+    "start": "node dist/server.js",
+    "generate": "prisma generate",
+    "pretypecheck": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "prisma:validate": "prisma validate",
+    "test": "npm run typecheck"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.0.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "better-auth": "^1.6.20",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "prisma": "^7.8.0"
+  }
+}
