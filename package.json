@@ -2,28 +2,22 @@
   "name": "queuestorm_backend",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/server.js",
-  "type": "module",
+  "main": "index.js",
   "scripts": {
-    "predev": "prisma generate",
-    "dev": "tsx src/server.ts",
-    "preauth": "prisma generate",
-    "auth": "tsx src/lib/auth.ts",
-    "ts": "tsx",
-    "check": "npm run typecheck && npm run build",
-    "prebuild": "prisma generate",
-    "build": "tsup src/server.ts --format esm --clean",
-    "start": "node dist/server.js",
+    "test": "npm run typecheck",
+    "dev": "tsx watch src/server.ts",
+    "seeding": "tsx src/scripts/seedingAdmin.ts",
+    "migrate": "prisma migrate dev",
     "generate": "prisma generate",
-    "pretypecheck": "prisma generate",
-    "typecheck": "tsc --noEmit",
-    "prisma:generate": "prisma generate",
-    "prisma:validate": "prisma validate",
-    "test": "npm run typecheck"
+    "postinstall": "prisma generate",
+    "typecheck": "prisma generate && tsc --noEmit",
+    "build": "prisma generate && tsup src/server.ts --format esm --platform node --target node20 --outDir api --external pg-native",
+    "check": "npm run typecheck && npm run build"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "type": "module",
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -41,6 +35,7 @@
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
-    "prisma": "^7.8.0"
+    "prisma": "^7.8.0",
+    "zod": "^4.4.3"
   }
 }

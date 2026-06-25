@@ -1,28 +1,37 @@
 import "dotenv/config";
-
-import { app } from "./app.js";
+import app from "./app.js";
 import { prisma } from "./lib/prisma.js";
 
-const port = Number(process.env.PORT ?? 3000);
+const PORT = process.env.PORT ?? "3000";
 
-const server = app.listen(port, () => {
-  console.log(`QueueStorm backend listening on port ${port}`);
-});
+async function main() {
+  try {
+    await prisma.$connect();
+    console.log("Connected to the database successfully.");
 
-const shutdown = async (signal: NodeJS.Signals) => {
-  console.log(`${signal} received. Shutting down...`);
+    const server = app.listen(PORT, () => {
+      console.log(`Server is running on http://localhost:${PORT}`);
+    });
 
-  server.close(async (error) => {
+    const shutdown = async (signal: NodeJS.Signals) => {
+      console.log(`${signal} received. Shutting down...`);
+      server.close(async (error) => {
+        await prisma.$disconnect();
+        if (error) {
+          console.error(error);
+          process.exit(1);
+        }
+        process.exit(0);
+      });
+    };
+
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  } catch (error) {
+    console.error("An error occurred:", error);
     await prisma.$disconnect();
+    process.exit(1);
+  }
+}
 
-    if (error) {
-      console.error(error);
-      process.exit(1);
-    }
-
-    process.exit(0);
-  });
-};
-
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+main();
