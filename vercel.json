@@ -2,7 +2,8 @@
   "version": 2,
   "functions": {
     "api/server.js": {
-      "includeFiles": "prisma/generated/**"
+      "includeFiles": "prisma/generated/**",
+      "maxDuration": 30
     }
   },
   "routes": [

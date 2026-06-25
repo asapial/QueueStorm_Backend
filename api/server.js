@@ -56,29 +56,93 @@ import { Router } from "express";
 // src/lib/openrouter.ts
 var OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 var MODEL = "google/gemma-4-31b-it:free";
+var MAX_ATTEMPTS = 3;
+var TOTAL_TIMEOUT_MS = 3e4;
+var PER_ATTEMPT_TIMEOUT_MS = 12e3;
+var BASE_BACKOFF_MS = 1e3;
+var RETRYABLE_HTTP_CODES = /* @__PURE__ */ new Set([429, 500, 502, 503, 504]);
+var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+var isRetryableError = (err) => {
+  if (err instanceof Error) {
+    const retryableMessages = ["fetch failed", "aborted", "network", "timeout", "econnreset"];
+    return retryableMessages.some(
+      (m) => err.message.toLowerCase().includes(m)
+    );
+  }
+  if (typeof err === "object" && err !== null && "status" in err) {
+    return RETRYABLE_HTTP_CODES.has(err.status);
+  }
+  return false;
+};
+var fetchOnce = async (fullPrompt) => {
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(new Error(`Per-attempt timeout (${PER_ATTEMPT_TIMEOUT_MS}ms) exceeded`)),
+    PER_ATTEMPT_TIMEOUT_MS
+  );
+  try {
+    const response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${env.openRouterApiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: fullPrompt }]
+      })
+    });
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      console.error("OpenRouter HTTP error:", response.status, JSON.stringify(err));
+      const error = Object.assign(new Error("AI service error"), { status: response.status });
+      throw error;
+    }
+    const result = await response.json();
+    const content = result.choices[0]?.message?.content;
+    if (!content) throw new Error("OpenRouter returned an empty response.");
+    return content.trim();
+  } finally {
+    clearTimeout(timer);
+  }
+};
 var chatWithAI = async (fullPrompt) => {
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.openRouterApiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: "user", content: fullPrompt }]
-    })
-  });
-  if (!response.ok) {
-    const err = await response.json();
-    console.error("OpenRouter error:", JSON.stringify(err, null, 2));
-    throw { status: response.status, message: "AI service error" };
+  const deadline = Date.now() + TOTAL_TIMEOUT_MS;
+  let lastError;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      console.error(`[openrouter] Total timeout of ${TOTAL_TIMEOUT_MS}ms exhausted after ${attempt - 1} attempt(s).`);
+      break;
+    }
+    try {
+      console.log(`[openrouter] Attempt ${attempt}/${MAX_ATTEMPTS} (${remaining}ms remaining)`);
+      const result = await fetchOnce(fullPrompt);
+      if (attempt > 1) {
+        console.log(`[openrouter] Succeeded on attempt ${attempt}.`);
+      }
+      return result;
+    } catch (err) {
+      lastError = err;
+      const isLast = attempt === MAX_ATTEMPTS;
+      const shouldRetry = !isLast && isRetryableError(err);
+      console.error(
+        `[openrouter] Attempt ${attempt} failed:`,
+        err instanceof Error ? err.message : err
+      );
+      if (!shouldRetry) break;
+      const backoff = Math.min(
+        BASE_BACKOFF_MS * 2 ** (attempt - 1),
+        deadline - Date.now() - 1
+      );
+      if (backoff > 0) {
+        console.log(`[openrouter] Retrying in ${backoff}ms\u2026`);
+        await sleep(backoff);
+      }
+    }
   }
-  const result = await response.json();
-  const content = result.choices[0]?.message?.content;
-  if (!content) {
-    throw new Error("OpenRouter returned an empty response.");
-  }
-  return content.trim();
+  throw lastError ?? new Error(`AI service failed after ${MAX_ATTEMPTS} attempts within ${TOTAL_TIMEOUT_MS}ms.`);
 };
 
 // src/lib/prisma.ts
