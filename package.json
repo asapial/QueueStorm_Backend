@@ -2,7 +2,7 @@
   "name": "queuestorm_backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/server.js",
   "scripts": {
     "test": "npm run typecheck",
     "dev": "tsx watch src/server.ts",
@@ -11,7 +11,9 @@
     "generate": "prisma generate",
     "postinstall": "prisma generate",
     "typecheck": "prisma generate && tsc --noEmit",
-    "build": "prisma generate && tsup src/server.ts --format esm --platform node --target node20 --outDir api --external pg-native",
+    "build": "prisma generate && tsup src/server.ts --format esm --platform node --target node20 --outDir dist --external pg-native",
+    "vercel-build": "prisma generate && tsup src/api.ts --format esm --platform node --target node20 --outDir api --no-splitting --external pg-native && node -e \"require('fs').renameSync('api/api.js','api/server.js')\"",
+    "start": "node dist/server.js",
     "check": "npm run typecheck && npm run build"
   },
   "keywords": [],

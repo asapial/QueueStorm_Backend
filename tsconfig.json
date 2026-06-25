@@ -4,7 +4,7 @@
     "module": "ESNext",
     "target": "ES2023",
     "moduleResolution": "bundler",
-    "types": [],
+    "types": ["node"],
     "sourceMap": true,
     "declaration": true,
     "declarationMap": true,
@@ -18,5 +18,5 @@
     "esModuleInterop": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "generated/prisma"]
+  "exclude": ["node_modules", "dist", "prisma/generated"]
 }
