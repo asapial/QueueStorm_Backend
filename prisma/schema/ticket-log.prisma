@@ -1,0 +1,17 @@
+model TicketLog {
+  id                  String   @id @default(cuid())
+  ticketId            String
+  channel             String?
+  locale              String?
+  message             String
+  caseType            String
+  severity            String
+  department          String
+  agentSummary        String
+  humanReviewRequired Boolean
+  confidence          Float
+  createdAt           DateTime @default(now())
+
+  @@index([ticketId])
+  @@map("ticket_log")
+}
